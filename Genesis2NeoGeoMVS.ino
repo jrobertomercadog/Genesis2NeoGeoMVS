@@ -1,5 +1,9 @@
 //
 // Genesis2NeoGeoMVS
+//
+// This project requires the Arduino library "SegaController" from Jon Thysell,
+// Please follow the instructions at https://github.com/jonthysell/SegaController 
+//
 // Inspired by the library "SegaController" 
 //  from Jon Thysell <thysell@gmail.com> <http://jonthysell.com>
 //
@@ -47,8 +51,8 @@
 
 // NeoGeo MVS  DB15 pins (looking face-on to the end of the plug):
 //
-//   8    7   6  5  4  3  2   1
-//    15  14  13  12  11 10  9
+//   8   7   6  5  4  3  2   1
+//   15  14  13  12  11  10 9
 //
 // Connect the Arduino to the NeoGeo MVS as follows:
 // D9  -> MVS_11
@@ -62,10 +66,23 @@
 // D18 -> MVS_13
 // +5V -> MVS_01
 // GND -> MVS_08
+// 
+// Solder a 0.1uF SMD capacitor (or tantalum) between GND and 5V at the Arduino pins.
+// This is known as a "bypass" capacitor, it is not compulsory but it is highly advised.
+
+const byte MVS_A = 9;
+const byte MVS_B = 10;
+const byte MVS_C = 11;
+const byte MVS_D = 12;
+const byte MVS_UP = 14;
+const byte MVS_DOWN = 15;
+const byte MVS_LEFT = 16;
+const byte MVS_RIGHT = 17;
+const byte MVS_START = 18;
 
 SegaController controller(8, 2, 3, 4, 5, 6, 7);
 
-const unsigned long TOGGLE_TIME_WINDOW = 23;
+const unsigned long TOGGLE_TIME_WINDOW = 23; //don't use any value lower than 20 millis, the default "23 millis" is the "sweet-spot" I've tested for auto-firing.
 
 // Controller states
 word currentState = 0;
@@ -75,29 +92,27 @@ unsigned long lastReadToggle = 0;
 
 void setup()
 {
-    pinMode(LED_BUILTIN, OUTPUT);
-    pinMode(9, OUTPUT); //A
-    pinMode(10, OUTPUT); //B
-    pinMode(11, OUTPUT); //C
-    pinMode(12, OUTPUT); //D
+    pinMode(MVS_A, OUTPUT); //A
+    pinMode(MVS_B, OUTPUT); //B
+    pinMode(MVS_C, OUTPUT); //C
+    pinMode(MVS_D, OUTPUT); //D
 
-    pinMode(14, OUTPUT); //UP
-    pinMode(15, OUTPUT); //DOWN
-    pinMode(16, OUTPUT); //LEFT
-    pinMode(17, OUTPUT); //RIGHT
-    pinMode(18, OUTPUT); //START
+    pinMode(MVS_UP, OUTPUT); //UP
+    pinMode(MVS_DOWN, OUTPUT); //DOWN
+    pinMode(MVS_LEFT, OUTPUT); //LEFT
+    pinMode(MVS_RIGHT, OUTPUT); //RIGHT
+    pinMode(MVS_START, OUTPUT); //START
 
-    digitalWrite(9, HIGH);
-    digitalWrite(10, HIGH);
-    digitalWrite(11, HIGH);
-    digitalWrite(12, HIGH);
+    digitalWrite(MVS_A, HIGH); // MVS controllers seems to be pulled-up by default and a "press" is detected when transitions from HIGH to LOW.
+    digitalWrite(MVS_B, HIGH);
+    digitalWrite(MVS_C, HIGH);
+    digitalWrite(MVS_D, HIGH);
 
-    digitalWrite(14, HIGH);
-    digitalWrite(15, HIGH);
-    digitalWrite(16, HIGH);
-    digitalWrite(17, HIGH);
-    digitalWrite(18, HIGH);
-    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(MVS_UP, HIGH);
+    digitalWrite(MVS_DOWN, HIGH);
+    digitalWrite(MVS_LEFT, HIGH);
+    digitalWrite(MVS_RIGHT, HIGH);
+    digitalWrite(MVS_START, HIGH);
     lastReadToggle = millis();
 }
 
@@ -109,7 +124,7 @@ void loop()
 
 void processGenesis()
 {
-    if ((currentState != lastState)&&(currentState & SC_CTL_ON))
+    if ((currentState != lastState)&&(currentState & SC_CTL_ON)) //processing for other buttons ocurrs only if there's new button presses (one or many) and also if the SEGA controller is detected.
     {
       for(byte idx = 0; idx < 9; idx++) 
       {
@@ -118,69 +133,77 @@ void processGenesis()
         {          
           case 0:
             bThisInput = ((currentState & SC_BTN_A) ? LOW : HIGH);
-            digitalWrite(9, bThisInput);
+            digitalWrite(MVS_A, bThisInput);
           break;
           case 1:
             bThisInput = ((currentState & SC_BTN_B) ? LOW : HIGH);
-            digitalWrite(10, bThisInput);
+            digitalWrite(MVS_B, bThisInput);
           break;              
           case 2:
             bThisInput = ((currentState & SC_BTN_C) ? LOW : HIGH);
-            digitalWrite(11, bThisInput);
+            digitalWrite(MVS_C, bThisInput);
           break;
           case 3:
             bThisInput = ((currentState & SC_BTN_Z) ? LOW : HIGH);
-            digitalWrite(12, bThisInput);
+            digitalWrite(MVS_D, bThisInput);
           break;
           case 4:
             bThisInput = ((currentState & SC_BTN_UP) ? LOW : HIGH);
-            digitalWrite(14, bThisInput);
+            digitalWrite(MVS_UP, bThisInput);
           break;
           case 5:
             bThisInput = ((currentState & SC_BTN_DOWN) ? LOW : HIGH);
-            digitalWrite(15, bThisInput);
+            digitalWrite(MVS_DOWN, bThisInput);
             break;
           case 6:
             bThisInput = ((currentState & SC_BTN_LEFT) ? LOW : HIGH);
-            digitalWrite(16, bThisInput);
+            digitalWrite(MVS_LEFT, bThisInput);
           break;
           case 7:
             bThisInput = ((currentState & SC_BTN_RIGHT) ? LOW : HIGH);
-            digitalWrite(17, bThisInput);
+            digitalWrite(MVS_RIGHT, bThisInput);
           break;
           case 8:
             bThisInput = ((currentState & SC_BTN_START) ? LOW : HIGH);
-            digitalWrite(18, bThisInput);
+            digitalWrite(MVS_START, bThisInput);
           break;                                                                                                
         }
       }
     }
-    
-    word bCheckY = currentState&SC_BTN_Y;
-    bCheckY = bCheckY >> 10;
-    if(bCheckY) 
+    //The "auto-fire" function, by default, is assigned to the "SEGA Y BUTTON"
+    //This function triggers every X amount of time toggling the "MVS A BUTTON"
+    //the "window time" is determined by the TOGGLE_TIME_WINDOW variable at the top.
+    //
+    //if you want to use the "SEGA X BUTTON" for auto-fire instead of "SEGA Y BUTTON",
+    //uncomment the following two lines and comment the next two:
+    //word bCheckTrigger = currentState&SC_BTN_X;
+    //bCheckTrigger = bCheckTrigger >> 9;
+    word bCheckTrigger = currentState&SC_BTN_Y; //START COMMENTING FROM HERE you want to disable "auto-fire"
+    bCheckTrigger = bCheckTrigger >> 10;
+    if(bCheckTrigger) 
     {
       unsigned long timeDelta = millis() -lastReadToggle;
       if (timeDelta > TOGGLE_TIME_WINDOW) 
       {
-        digitalWrite(9, !bToggle);
+        digitalWrite(MVS_A, !bToggle); //you may change the toggle button if you like, MVS_A is assigned by default.
         bToggle = !bToggle;
         lastReadToggle = millis();        
       }
-    }    
+    }
+    //COMMENT UP TO HERE if you want to disable "auto-fire"
       
-    if(!(currentState & SC_CTL_ON)) 
+    if(!(currentState & SC_CTL_ON)) //if the SEGA controller has been disconnected, pull-up all MVS buttons back. This avoids the issue of "stuck buttons".
     {
-      digitalWrite(9, HIGH);
-      digitalWrite(10, HIGH);
-      digitalWrite(11, HIGH);
-      digitalWrite(12, HIGH);
+      digitalWrite(MVS_A, HIGH);
+      digitalWrite(MVS_B, HIGH);
+      digitalWrite(MVS_C, HIGH);
+      digitalWrite(MVS_D, HIGH);
   
-      digitalWrite(14, HIGH);
-      digitalWrite(15, HIGH);
-      digitalWrite(16, HIGH);
-      digitalWrite(17, HIGH);
-      digitalWrite(18, HIGH);
+      digitalWrite(MVS_UP, HIGH);
+      digitalWrite(MVS_DOWN, HIGH);
+      digitalWrite(MVS_LEFT, HIGH);
+      digitalWrite(MVS_RIGHT, HIGH);
+      digitalWrite(MVS_START, HIGH);
     }      
 
     lastState = currentState;
